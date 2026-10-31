@@ -1,4 +1,6 @@
-# Mighty Final Fight (NES) – Documentação da análise e dos patches
+# Mighty Final Fight (NES) – Documentação da análise e dos patches / Analysis & Patches Documentation
+
+> 🇧🇷 **Português** | 🇺🇸 [English below](#-english-documentation)
 
 Documento gerado a partir da análise da ROM `Mighty_Final_Fight__U_____.nes` (dump do próprio usuário).
 Tudo aqui vem de leitura estática do código 6502 e de testes em emulador headless. Onde algo é **inferência** (não confirmado), está marcado como tal.
@@ -302,3 +304,224 @@ Arquivo HTML único e local. Funcionalidades principais:
 - Usar tipos de inimigo de **outro grupo gráfico** pode gerar sprites errados.
 - O número de mortes que libera o scroll por tela (`$8DC4`) e o comportamento de chefes não foram estudados a fundo.
 - Os testes são todos com bot; não houve jogo manual completo.
+
+
+---
+
+# 🇺🇸 English Documentation
+
+Document generated from the analysis of the `Mighty_Final_Fight__U_____.nes` ROM.
+Everything below comes from static analysis of the 6502 code and headless emulator testing. Where something is an **inference** (unconfirmed), it is marked accordingly.
+
+---
+
+## 1. The ROM
+
+| Item | Value |
+|---|---|
+| File size | 262,160 bytes |
+| MD5 (original) | `a8ad5d885a3e4e70ac083f4589374df8` |
+| Header (hex) | `4e45531a 08 10 40 08 …` (iNES 2.0) |
+| Mapper | 4 (MMC3) – flags6 = `0x40`, flags7 = `0x08` |
+| PRG-ROM | 8 × 16 KB = 128 KB (16 banks of 8 KB) |
+| CHR-ROM | 16 × 8 KB = 128 KB |
+| WRAM | `$6000-$7FFF` exists, though no game variables were observed there |
+
+### 1.1 Banks & Mapping
+
+MMC3 uses 8 KB banks. `$C000-$FFFF` is fixed (banks 14 and 15). `$8000-$BFFF` is switchable.
+
+- In-game, the main loop switches **pairs** of banks via the routine at `$FF4D`, reading `$F4` (bank at `$8000`) and `$F5` (bank at `$A000`). Observed pairs: `(0,1)`, `(4,5)`, `(8,9)`, `(10,11)`, `(12,13)`. The odd bank is always `f5 = f4 + 1`, except when loading stage data (see 4.1).
+- **File offset formula (`.nes`):** `offset = 16 + bank × 0x2000 + (address − base)`, with base `$8000` (even bank), `$A000` (odd bank), `$C000` (bank 14), `$E000` (bank 15).
+- Banks 8 and 9 are contiguous in the file, so for `$8000-$BFFF`: `offset = 0x10010 + (address − 0x8000)`.
+
+### 1.2 Main Loop (Fixed Bank 14)
+
+At `$C93B`, a main loop calls routines across different bank pairs in sequence (player, objects, spawning, AI, etc.). Key addresses:
+
+| Address | Function |
+|---|---|
+| `$C957` | Selects banks 8/9, calls `$8080` (section spawn table scanner) and `$8900` (per-screen waves) |
+| `$C96A` | Selects banks 12/13 |
+| `$C9B6…` | State machine dispatcher (`$30`) |
+| `$E2A3…$E4DF` | Horizontal camera / scrolling |
+| `$E521…$E66E` | Background column rendering |
+| `$F70A` | Finds a free object slot (slots 13→3); sets carry if none available |
+| `$FF4D` | Bank switch routine (reads `$F4`/`$F5`) |
+
+---
+
+## 2. Memory (Internal RAM)
+
+### 2.1 Game Variables (Zero Page)
+
+| Address | Meaning |
+|---|---|
+| `$22` | Index used at `$C1F8,Y` to select the stage data bank (0 = Stage 1 → Bank 1) |
+| `$24` | Column (0–31) within the screen when drawing the background |
+| `$29` | Map screen index during background column rendering |
+| `$2A` | Upper 3 bits of the stage header byte (flags) |
+| `$2C` | **Last screen index** of the current area (lower 5 bits of header). Stage 1 Area 0 = 3 |
+| `$2D` | Current screen (high byte of camera scroll) |
+| `$30` | Game state machine |
+| `$3F` | Wave status flag (`$FF` = wave completed / scroll unlocked) |
+| `$50` | `$FF` when crossing a screen boundary (combat lock mode) |
+| `$54` | Counter of reinforcement enemies spawned/defeated on the current screen |
+| `$60` | **Area** number within the stage (0, 1, 2) |
+| `$61` | Stage (round) number |
+| `$67` | **Spawn section** index (0–14) |
+| `$72/$73` | Pointer to current section's X-low table |
+| `$74/$75` | Pointer to X-high table |
+| `$76/$77` | Pointer to Y table |
+| `$78/$79` | Pointer to Z table |
+| `$7A/$7B` | Pointer to Object Type table |
+| `$9E` / `$9F` | Next spawn entry index when scrolling right / left |
+| `$BB` | Scroll lock flag |
+| `$F4` / `$F5` | Requested banks for `$8000` / `$A000` |
+| `$F9` | Screen counter (increments after each screen transition) |
+| `$FC` | Horizontal camera scroll (low byte) |
+
+### 2.2 Object Table (Structure of Arrays, 16 Slots)
+
+Each field is a 16-byte array indexed by slot `s`.
+
+| Base | Field | Notes |
+|---|---|---|
+| `$0300+s` | State | Bit 7 = slot active |
+| `$0320+s` | Behavior / Character ID | |
+| `$0360+s` | X (low) | |
+| `$0380+s` | X (high) | World position = `high * 256 + low` |
+| `$03C0+s` | Y (street depth) | Walkable street depth is `$82` to `$AE` |
+| `$03E0+s` | Z (height) | |
+| `$0480+s` | Spawn table index that created the object | Prevents duplicate spawns |
+| `$04F0+s` | Enemy **graphic group** | Regular grunts: 3, 4, or 5 |
+| `$0560+s`, `$0580+s`, `$05B0+s` | Flags / Family (`$0580 ≥ $80` = active enemy) | |
+
+Slots: **0 = player**; **3–13 = spawned objects** (free slot search iterates from 13 down to 3); 14–15 are reserved for special objects.
+In the original game, the first two enemies always occupy slots 13 and 12.
+
+---
+
+## 3. Why Only 2 Enemies Spawn at Once in the Original Game
+
+It is not a slot limitation (11 object slots are available). There are two causes:
+
+1. **Stage data.** The Stage 1 (Section 0) spawn table only has 6 entries, arranged in 3 pairs with close X coordinates (2 enemies per screen).
+2. **Active enemy limit check** (`$96C3`, Bank 8). Both the random wave generator (`$9000`) and our section queue hook check `$96C3`, where `CMP #$02` at `$96F2` caps active enemies at 2.
+
+Additionally, the PPU CHR banking logic (`$9110…`) loads tiles for **at most 2 enemy graphic groups** at a time (inspecting `$04F0` of active enemies). Using enemy types marked with `★` (native to that section's graphic groups) ensures glitch-free sprites.
+
+---
+
+## 4. Section Table Spawn System (Bank 8)
+
+### 4.1 Pointers per Section
+
+15 sections (`$67` = 0…14). Five pointer tables of 15 entries (low byte) + 15 entries (high byte) in Bank 8:
+
+| Table | Low at | High at | Contents |
+|---|---|---|---|
+| X-high | `$81FE` | `$820D` | High byte of X position |
+| X-low | `$821C` | `$822B` | Low byte of X position |
+| Z | `$823A` | `$8249` | Height (0 in Stage 1) |
+| Y | `$8258` | `$8267` | Street depth (`$82–$AE`, or `$30` for top jump-ins) |
+| Type | `$8276` | `$8285` | Object / Enemy type ID (`$00–$68`) |
+
+Each pointer targets a byte list terminated by `$FF` in the X-high table. Original data resides at `$8294–$8441`, immediately followed by the object property table at `$8442`.
+
+**Stage 1, Section 0 (original):**
+
+| # | X | Y | Type |
+|---|---|---|---|
+| 1 | `$148` | `$88` | `$3D` |
+| 2 | `$178` | `$A0` | `$01` |
+| 3 | `$248` | `$98` | `$4B` |
+| 4 | `$298` | `$AE` | `$20` |
+| 5 | `$348` | `$82` | `$64` |
+| 6 | `$3D0` | `$90` | `$5D` |
+
+### 4.2 Object Properties & Full Catalog (`$00–$68`)
+
+- **Table A at `$8442 + type×4`:** Four bytes copied into `$0560`, `$0320` (AI/behavior ID), `$0580` (initial animation), `$0440`.
+- **Table B at `$85E6 + type×4`:** `$0490` (HP), **`$04F0` (graphic group)**, `$05B0` (enemy family/character).
+- **The 15 sections (`$67 = 0..14`)** map to stages via `$E161,Y` in Bank 15 (3 areas per stage):
+  - **Sections 0–2:** Stage 1 (Slums: Street, Pier, Boss: Thrasher)
+  - **Sections 3–5:** Stage 2 (Riverfront: Riverside, Factory, Boss: Katana)
+  - **Sections 6–8:** Stage 3 (Old Town: Street, Bar, Boss: Abigail)
+  - **Sections 9–11:** Stage 4 (Industrial Area: Power Plant, Elevator, Boss: Katana II)
+  - **Sections 12–14:** Stage 5 (Bay Area: Part 1 w/ Abigail, Part 2 w/ Katana, Final Boss: Belger)
+- **Enemy Families (`$05B0` for groups 3–5):**
+  - `$05B0 = 0` (grp 4, CHR `$18`): **Poison / Roxy**
+  - `$05B0 = 1` (grp 5, CHR `$1B`): **J / Two.P**
+  - `$05B0 = 2` (grp 3, CHR `$1D`): **Bred / Jake**
+  - `$05B0 = 3` (grp 4, CHR `$1F`): **Simons**
+  - `$05B0 = 4` (grp 5, CHR `$20`): **El Gado**
+  - `$05B0 = 5` (grp 3, CHR `$24`): **Andore**
+- **Type ID Ranges (`$00–$68`):**
+  - `$00–$01`, `$20–$23`: Regular enemies walking Lv.1 (HP 40 / Andore 104)
+  - `$02–$09`: Items (`$02` Apple, `$03` Meat, `$04` Cake, `$05` Drink, `$06` Heart, `$07` \$ Bag, `$08` 10 Coin, `$09` 1UP)
+  - `$0A–$0C`: Weapons (`$0A` Knife, `$0B` Shuriken, `$0C` Hammer; adjusted by current hero in `$81EA`)
+  - `$0D–$10`, `$1D`: Unused (`RTS`)
+  - `$11`: Rolling Barrel Spawner (`Y = 0`)
+  - `$12`, `$1F`: Elevator Controller (Stage 4-2) & `$1E`: Elevator Arrow
+  - `$13–$17`: Bosses (`$13` Thrasher, `$14` Katana, `$15` Abigail, `$16` Katana II, `$17` Belger)
+  - `$18`: Boss Dialogue Trigger; `$19`: Cutscene Thrasher fleeing (1-2); `$1A`: Cutscene Andore; `$1B`: Stage Event Thrasher (1-3); `$1C`: Event/Heal Meat (5-2)
+  - `$24–$29`: Regular enemies walking Lv.2 (HP 56 / Andore 104)
+  - `$2A–$2F`: Regular enemies walking Lv.3 (HP 88 / Andore 104)
+  - `$30–$35`: Poison (`$30,$32,$34`) & El Gado (`$31,$33,$35`) jumping from top (`Y = $30`, Lv.1–3)
+  - `$36–$3B`: Fast regular enemies Lv.3 (HP 40 / Andore 88)
+  - `$3C–$41`: Crouched J/Two.P (even) & crouched Bred w/ barrel (odd), Lv.1–3, HP 48
+  - `$42–$47`: Unused Lv.3 variants
+  - `$48–$4D`: Idle standing regular enemies Lv.1 (HP 64 / Andore 104)
+  - `$4E–$53`: Idle standing regular enemies Lv.2 (HP 72 / Andore 104)
+  - `$54–$59`: Idle standing regular enemies Lv.3 (HP 88 / Andore 104)
+  - `$5A–$5C`: Simons jumping from top (`Y = $30`, Lv.1–3, HP 104)
+  - `$5D–$62`: Crouched J/Two.P (`$5D,$5F,$61`) & crouched Bred w/ barrel (`$5E,$60,$62`), Lv.1–3, HP 48/72/88
+  - `$63–$68`: Sitting J/Two.P (`$63,$65,$67`) & wall-leaning Bred (`$64,$66,$68`), Lv.1–3, HP 48/72/88
+
+### 4.3 Spawn Routines (Bank 8)
+
+| Address | Function |
+|---|---|
+| `$8080` | Scans the section spawn table using `$9E` (scrolling right / locked) or `$9F` (scrolling left) |
+| `$80C2` | Reads entry `Y` into `$00..$03` and checks if `0 <= (enemy_X - camera_X) <= 255` |
+| `$80E4` | Spawns the object if not already active (`$0480`) |
+| `$80F8` | Allocates a free slot (13→3) and initializes the object |
+
+---
+
+## 5. Per-Screen Wave Dispatcher & Quotas
+
+- `$8900` calls `$89D7`, which dispatches to a section handler based on `$61`/`$60`.
+- For Stage 1 Area 0 (`$8A2C`), it indexes a 4-screen jump table at `$8A3B`/`$8A3F` using `LDY $F9`.
+- Each screen handler compares `$54` against the reinforcement quota table at `$8DC4..$8DF8` (`QA`). When `$54` reaches the quota and all active enemies on screen are defeated (`$96FC`), `$89D2` sets `$3F = $FF` to display the **GO!** arrow and unlock scrolling.
+
+---
+
+## 6. Background Tilemap Structure
+
+- Background columns are rendered dynamically while scrolling (`$E66E`), reading screen tilemap IDs from `$AE60,Y` (Area 0), `$AE90,Y` (Area 1), or `$AEC0,Y` (Area 2) in the stage's data bank.
+- In Stage 1 (Bank 1), Area 0's default screen list is `0, 1, 2, 3`, and its length header is at `$AE68` (bits 0–4 = last screen index `$2C`).
+- Transitions `0→1`, `2→1`, and `2→3` connect seamlessly, allowing extended stage sequences such as `0,1,2,1,2,1,2,3`.
+
+---
+
+## 7. Free ROM Space Used for Relocation & Hooks
+
+| Bank | Address | Size |
+|---|---|---|
+| Bank 9 | `$A073` | 66 bytes |
+| Bank 9 | `$BA18` | 233 bytes |
+| Bank 1 | `$BAA4` | 93 bytes |
+| Bank 15 (fixed) | `$FD7C` | 23 bytes |
+
+---
+
+## 8. Editor (`mff_editor.html`)
+
+Single-file, zero-dependency local web editor:
+- **Load Original or Already-Edited ROMs:** Reads both clean `Mighty Final Fight (U) [!].nes` and patched `MFF_editada.nes` ROMs, restoring all enemy positions, limits, flags, and Section 0 screen sequences.
+- **Save / Load Project (`.json`) & Browser Auto-Save (`localStorage`):** Export/import changes as `.json` or restore the last session with one click.
+- **Interactive Drag-and-Drop Map with Real CHR Sprites:** Decodes metasprites and CHR-ROM tiles directly from the ROM (`getSpr`) onto a visual screen map, dynamically adding screens as you edit Section 0's screen list (`#seq`).
+- **Automatic Section Queue (`#lt`) & Clean Screen Lock (`#wc`):** Limits simultaneous enemies from the section table to your chosen maximum (1–6), queuing remaining enemies on the same screen so they enter one by one as enemies die, and automatically waiting until all enemies on the screen are defeated before unlocking scroll.
+- **Bilingual UI (`PT / ENG`):** Instant toggle between Portuguese and English.
