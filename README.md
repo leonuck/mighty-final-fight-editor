@@ -4,6 +4,8 @@
 
 Editor visual web (arquivo único `mff_editor.html`, sem dependências) e documentação técnica de engenharia reversa (6502 / MMC3) para o jogo **Mighty Final Fight** de NES.
 
+![Mighty Final Fight – Editor](./screen.png)
+
 ## ✨ Funcionalidades
 
 - **Mapa Visual Interativo (Drag-and-Drop):** Arraste inimigos, itens, armas e chefes diretamente nas telas de cada fase, com **sprites reais extraídos da própria ROM** em tempo real.
