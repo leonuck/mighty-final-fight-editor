@@ -1,0 +1,2 @@
+# Ignorar arquivos de ROM (.nes) para não subir conteúdo com direitos autorais no GitHub
+*.nes

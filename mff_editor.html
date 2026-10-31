@@ -1,0 +1,299 @@
+<!doctype html><html lang=pt-BR><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Mighty Final Fight – Editor</title>
+<style>:root{color-scheme:light dark;font:14px system-ui,sans-serif}body{max-width:960px;margin:auto;padding:12px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+input,select,button{font:inherit;padding:3px 6px}input.n{width:4.6em}fieldset{margin:12px 0;border-radius:6px}
+td,th{padding:2px 4px;text-align:left}#m{font-weight:600;min-height:1.4em}small{opacity:.75}
+#mw{overflow-x:auto;border:1px solid #555;border-radius:6px;background:#0a0a0f;margin-bottom:8px;user-select:none}
+#mp{position:relative;height:240px;background:linear-gradient(#0b0d19 0,#0b0d19 129px,#25222e 130px,#1b1822 175px,#0d0b10 176px)}
+.sc{position:absolute;top:0;bottom:0;border-right:1px dashed #445;color:#789;font-size:11px;padding:4px 6px;pointer-events:none}
+.zl{position:absolute;left:0;right:0;border-top:1px dotted #556;color:#678;font-size:10px;padding-left:6px;pointer-events:none}
+.en{position:absolute;transform:translate(-50%,-85%);cursor:grab;display:flex;flex-direction:column;align-items:center;z-index:2}
+.en:active{cursor:grabbing;z-index:9}
+.en img{image-rendering:pixelated;pointer-events:none;filter:drop-shadow(0 1px 2px #000)}
+.en span{background:rgba(0,0,0,.82);color:#fff;border:1px solid #679;border-radius:4px;padding:0 4px;font-size:11px;white-space:nowrap;line-height:1.3}</style>
+<div class=top><h2 id=t_h2>Mighty Final Fight – editor de inimigos</h2>
+<div>🌐 <button id=b_pt type=button><b>PT</b></button> <button id=b_en type=button>ENG</button></div></div>
+<p><span id=t_rom>1) Carregue a ROM (original <b>ou</b> já editada por este editor):</span> <input type=file id=f accept=.nes>
+<p id=m></p>
+<div id=app hidden>
+<fieldset><legend id=t_s2>2) Seção e Projeto</legend>
+<select id=st></select> <small id=cap></small><br>
+<small id=t_sh>Seção 0 = primeira área da fase 1. Cada linha é um inimigo; ele nasce quando o scroll chega perto do X dele.</small><br>
+<button id=sv type=button>💾 Salvar alterações (.json)</button>
+<button id=ld type=button>📂 Abrir alterações (.json)</button>
+<button id=rs type=button hidden>↺ Restaurar última sessão</button>
+<input type=file id=pf accept=.json hidden></fieldset>
+<fieldset><legend id=t_wg>Gerador de ondas (substitui os inimigos da seção)</legend>
+<span id=t_wp>Ondas (inimigos por onda):</span> <input id=pat value="4,3,3" size=10>
+<span id=t_wx>X inicial (hex):</span> <input class=n id=x0 value=148>
+<span id=t_ws>Distância entre ondas (hex):</span> <input class=n id=sp value=100><br>
+<span id=t_wt>Tipos (hex, em rodízio):</span> <input id=ty value="3d,01,4b,20" size=18>
+<button id=gen type=button>Gerar</button><br>
+<small id=t_wh>Ex.: "4,3,3" = 4 inimigos, depois 3, depois 3. Use tipos "★" da seção (mesmo grupo gráfico) pra evitar sprites errados.</small></fieldset>
+<fieldset><legend id=t_se>Inimigos da seção (arraste no mapa ou edite na tabela)</legend>
+<div id=mw><div id=mp></div></div>
+<table><thead><tr><th>#<th>X (hex)<th>Y (hex, 82–AE)<th id=t_th>Tipo<th></thead><tbody id=tb></tbody></table>
+<button id=add type=button>+ inimigo</button></fieldset>
+<fieldset><legend id=t_ot>Outros ajustes</legend>
+<span id=t_lm>Máx. de inimigos vivos por vez (seção e ondas):</span> <input id=lim type=number min=1 max=6 value=4 style="width:4em"><br>
+<label><input type=checkbox id=lt checked> <span id=t_lt>Limitar também os inimigos da seção (ex.: se colocar 7 na tela e máx. 4, vêm 4 e os outros 3 entram conforme morrem)</span></label><br>
+<label><input type=checkbox id=fr checked> <span id=t_fr>Entrada rápida de reforço quando morre um inimigo (~0,4s em vez de até 3s)</span></label><br>
+<span id=t_sq>Telas da seção 0 (IDs 0–3, separados por vírgula):</span> <input id=seq value="0,1,2,3" size=24><br>
+<small id=t_sqh>Original: 0,1,2,3. Fase mais longa: ex. 0,1,2,1,2,1,2,3 (as emendas 1→2 e 2→1 ficam naturais). Depois, arraste inimigos para as telas novas.</small></fieldset>
+<button id=go type=button><b id=t_go>3) Aplicar e baixar ROM</b></button></div>
+<script>
+const $=i=>document.getElementById(i),msg=t=>$('m').textContent=t;
+let lg='pt';
+const PT=[0x81FE,0x821C,0x823A,0x8258,0x8276];
+const SN={
+ pt:['Fase 1-1 (Slums – Rua)','Fase 1-2 (Slums – Cais)','Fase 1-3 (Chefe: Thrasher)','Fase 2-1 (Beira-rio)','Fase 2-2 (Fábrica)','Fase 2-3 (Chefe: Katana)','Fase 3-1 (Old Town – Rua)','Fase 3-2 (Old Town – Bar)','Fase 3-3 (Chefe: Abigail)','Fase 4-1 (Usina)','Fase 4-2 (Elevador)','Fase 4-3 (Chefe: Katana II)','Fase 5-1 (Bay Area 1 / Abigail)','Fase 5-2 (Bay Area 2 / Katana)','Fase 5-3 (Chefe Final: Belger)'],
+ en:['Stage 1-1 (Slums – Street)','Stage 1-2 (Slums – Pier)','Stage 1-3 (Boss: Thrasher)','Stage 2-1 (Riverside)','Stage 2-2 (Factory)','Stage 2-3 (Boss: Katana)','Stage 3-1 (Old Town – Street)','Stage 3-2 (Old Town – Bar)','Stage 3-3 (Boss: Abigail)','Stage 4-1 (Power Plant)','Stage 4-2 (Elevator)','Stage 4-3 (Boss: Katana II)','Stage 5-1 (Bay Area 1 / Abigail)','Stage 5-2 (Bay Area 2 / Katana)','Stage 5-3 (Final Boss: Belger)']
+};
+const KN=['Poison/Roxy','J/Two.P','Bred/Jake','Simons','El Gado','Andore'];
+const SP={
+ pt:{2:'Item: Maçã (cura)',3:'Item: Carne (cura)',4:'Item: Bolo (cura)',5:'Item: Bebida (cura)',6:'Item: Coração',7:'Item: Saco de $ (XP)',8:'Item: Moeda 10 (XP)',9:'Item: Vida Extra (1UP)',10:'Arma: Faca (ou arma do herói)',11:'Arma: Shuriken (ou arma do herói)',12:'Arma: Martelo (ou arma do herói)',13:'(Não usado)',14:'(Não usado)',15:'(Não usado)',16:'(Não usado)',17:'Gerador de Barris Rolantes (Y=0)',18:'Controlador do Elevador (alt.)',19:'Chefe: Thrasher (Fase 1)',20:'Chefe: Katana (Fase 2)',21:'Chefe: Abigail (Fase 3/5)',22:'Chefe: Katana II (Fase 4/5)',23:'Chefe Final: Belger (Fase 5)',24:'Gatilho de Diálogo de Chefe',25:'Cena: Thrasher fugindo (Fase 1-2)',26:'Cena: Andore (intro)',27:'Evento Cenário: Thrasher (Fase 1-3)',28:'Evento/Cura: Carne (Fase 5-2)',29:'(Não usado)',30:'Seta do Elevador (Fase 4-2)',31:'Controlador do Elevador (Fase 4-2)'},
+ en:{2:'Item: Apple (heal)',3:'Item: Meat (heal)',4:'Item: Cake (heal)',5:'Item: Drink (heal)',6:'Item: Heart',7:'Item: $ Bag (XP)',8:'Item: 10 Coin (XP)',9:'Item: Extra Life (1UP)',10:'Weapon: Knife (or hero weapon)',11:'Weapon: Shuriken (or hero weapon)',12:'Weapon: Hammer (or hero weapon)',13:'(Unused)',14:'(Unused)',15:'(Unused)',16:'(Unused)',17:'Rolling Barrel Spawner (Y=0)',18:'Elevator Controller (alt.)',19:'Boss: Thrasher (Stage 1)',20:'Boss: Katana (Stage 2)',21:'Boss: Abigail (Stage 3/5)',22:'Boss: Katana II (Stage 4/5)',23:'Final Boss: Belger (Stage 5)',24:'Boss Dialogue Trigger',25:'Cutscene: Thrasher fleeing (1-2)',26:'Cutscene: Andore (intro)',27:'Stage Event: Thrasher (1-3)',28:'Event/Heal: Meat (Stage 5-2)',29:'(Unused)',30:'Elevator Arrow (Stage 4-2)',31:'Elevator Controller (Stage 4-2)'}
+};
+const TX={
+ pt:{
+  t_h2:'Mighty Final Fight – editor de inimigos',t_rom:'1) Carregue a ROM (original <b>ou</b> já editada por este editor):',
+  t_s2:'2) Seção e Projeto',t_sh:'Seção 0 = primeira área da fase 1. Cada linha é um inimigo; ele nasce quando o scroll chega perto do X dele.',
+  sv:'💾 Salvar alterações (.json)',ld:'📂 Abrir alterações (.json)',rs:'↺ Restaurar última sessão',
+  t_wg:'Gerador de ondas (substitui os inimigos da seção)',t_wp:'Ondas (inimigos por onda):',t_wx:'X inicial (hex):',t_ws:'Distância entre ondas (hex):',t_wt:'Tipos (hex, em rodízio):',gen:'Gerar',
+  t_wh:'Ex.: "4,3,3" = 4 inimigos, depois 3, depois 3. Use tipos "★" da seção (mesmo grupo gráfico) pra evitar sprites errados.',
+  t_se:'Inimigos da seção (arraste no mapa ou edite na tabela)',t_th:'Tipo',add:'+ inimigo',
+  t_ot:'Outros ajustes',t_lm:'Máx. de inimigos vivos por vez (seção e ondas):',
+  t_lt:'Limitar também os inimigos da seção (ex.: se colocar 7 na tela e máx. 4, vêm 4 e os outros 3 entram conforme morrem)',
+  t_fr:'Entrada rápida de reforço quando morre um inimigo (~0,4s em vez de até 3s)',
+  t_sq:'Telas da seção 0 (IDs 0–3, separados por vírgula):',
+  t_sqh:'Original: 0,1,2,3. Fase mais longa: ex. 0,1,2,1,2,1,2,3 (as emendas 1→2 e 2→1 ficam naturais). Depois, arraste inimigos para as telas novas.',
+  t_go:'3) Aplicar e baixar ROM',sec:'Seção',top:'Topo (Y=30)',str:'Rua / Calçada (Y=82–AE)',scr:'Tela',map:'Mapa',out:'(fora da lista)',
+  drag:'Arraste para mover',cap:'Espaço de dados',over:' — ACIMA DO LIMITE',
+  m_bad:'ROM inesperada (esperado: Mighty Final Fight 262160 bytes, MMC3).',
+  m_ed:'ROM editada carregada com todas as suas alterações!',m_ok:'ROM original carregada.',
+  m_sv:'Alterações salvas em mff_alteracoes.json',m_ld:'Alterações carregadas do arquivo .json!',m_lde:'Erro ao ler arquivo .json.',
+  m_rs:'Última sessão restaurada!',m_gen:'Valores inválidos no gerador.',m_lim:'Valor fora do limite na seção ',
+  m_spc:'Sem espaço na ROM: remova inimigos.',m_seq:'Telas: use IDs 0–3, até 16 telas.',m_rom:'ROM gerada: MFF_editada.nes'
+ },
+ en:{
+  t_h2:'Mighty Final Fight – Enemy Editor',t_rom:'1) Load ROM (original <b>or</b> already edited by this editor):',
+  t_s2:'2) Section & Project',t_sh:'Section 0 = Stage 1 first area. Each row is an enemy; it spawns when camera scroll approaches its X.',
+  sv:'💾 Save changes (.json)',ld:'📂 Load changes (.json)',rs:'↺ Restore last session',
+  t_wg:'Wave Generator (replaces section enemies)',t_wp:'Waves (enemies per wave):',t_wx:'Start X (hex):',t_ws:'Wave spacing (hex):',t_wt:'Types (hex, round-robin):',gen:'Generate',
+  t_wh:'Ex.: "4,3,3" = 4 enemies, then 3, then 3. Use "★" types from this section (same graphic group) to avoid glitched sprites.',
+  t_se:'Section Enemies (drag on map or edit in table)',t_th:'Type',add:'+ enemy',
+  t_ot:'Other Settings',t_lm:'Max alive enemies at once (section & waves):',
+  t_lt:'Also limit section enemies (e.g. if you place 7 on a screen and max is 4, 4 spawn first and the other 3 enter as enemies die)',
+  t_fr:'Fast reinforcement spawn when an enemy dies (~0.4s instead of up to 3s)',
+  t_sq:'Section 0 Screens (IDs 0–3, comma-separated):',
+  t_sqh:'Original: 0,1,2,3. Longer stage: e.g. 0,1,2,1,2,1,2,3 (transitions 1→2 and 2→1 connect seamlessly). Then drag enemies onto the new screens.',
+  t_go:'3) Apply & Download ROM',sec:'Section',top:'Top (Y=30)',str:'Street / Sidewalk (Y=82–AE)',scr:'Screen',map:'Map',out:'(outside list)',
+  drag:'Drag to move',cap:'Data space',over:' — OVER LIMIT',
+  m_bad:'Unexpected ROM (expected: Mighty Final Fight 262160 bytes, MMC3).',
+  m_ed:'Edited ROM loaded with all your changes!',m_ok:'Original ROM loaded.',
+  m_sv:'Changes saved to mff_alteracoes.json',m_ld:'Changes loaded from .json file!',m_lde:'Error reading .json file.',
+  m_rs:'Last session restored!',m_gen:'Invalid values in wave generator.',m_lim:'Value out of range in section ',
+  m_spc:'Out of ROM space: remove some enemies.',m_seq:'Screens: use IDs 0–3, up to 16 screens.',m_rom:'Generated ROM: MFF_editada.nes'
+ }
+};
+function enName(t,hp,g,c){
+ if(SP[lg][t])return SP[lg][t];
+ const en=lg=='en';
+ if(t>=0x5a&&t<=0x5c)return`Simons (${en?'jumps from top Lv.':'pula do topo Nv.'}${t-0x59}, Y=30)`;
+ const nm=KN[c]||(en?`Type ${h(t)}`:`Tipo ${h(t)}`);
+ let m='';
+ if(t<=1||t>=0x20&&t<=0x23)m=en?'walk Lv.1':'anda Nv.1';
+ else if(t<=0x29)m=en?'walk Lv.2':'anda Nv.2';
+ else if(t<=0x2f)m=en?'walk Lv.3':'anda Nv.3';
+ else if(t<=0x35)m=`${en?'jumps from top Lv.':'pula do topo Nv.'}${(t-0x30>>1)+1}, Y=30`;
+ else if(t<=0x3b)m=en?'fast Lv.3':'rápido Nv.3';
+ else if(t<=0x41)m=(c==1?(en?'crouched':'agachado'):(en?'crouched w/ barrel':'agachado c/ lata'))+` ${en?'Lv.':'Nv.'}${(t-0x3c>>1)+1}`;
+ else if(t<=0x47)m=en?'variant Lv.3 (unused)':'variante Nv.3 (não usado)';
+ else if(t<=0x4d)m=en?'stands idle Lv.1':'espera parado Nv.1';
+ else if(t<=0x53)m=en?'stands idle Lv.2':'espera parado Nv.2';
+ else if(t<=0x59)m=en?'stands idle Lv.3':'espera parado Nv.3';
+ else if(t<=0x62)m=(c==1?(en?'crouched':'agachado'):(en?'crouched w/ barrel':'agachado c/ lata'))+` ${en?'Lv.':'Nv.'}${(t-0x5d>>1)+1}`;
+ else m=(c==1?(en?'sitting on floor':'sentado no chão'):(en?'leaning on wall':'encostado na parede'))+` ${en?'Lv.':'Nv.'}${(t-0x63>>1)+1}`;
+ return`${nm} (${m}, HP ${hp})`;
+}
+const QA=[[0x8DC4,4],[0x8DC8,4],[0x8DCC,2],[0x8DCE,4],[0x8DD2,5],[0x8DD7,2],[0x8DD9,4],[0x8DDD,4],[0x8DE1,1],[0x8DE2,4],[0x8DE6,5],[0x8DEB,3],[0x8DEE,4],[0x8DF2,4],[0x8DF6,3]];
+const OQ=[[0,3,3,4],[0,4,3,1],[0,1],[0,3,4,4],[0,6,4,4,6],[0,1],[0,4,4,5],[0,5,4,4],[1],[0,5,3,2],[22,22,2,2,2],[0,5,1],[0,8,5,1],[0,7,5,1],[0,0,1]];
+const OS=[["328:136:61","376:160:1","584:152:75","664:174:32","840:130:100","976:144:93"],["392:0:17","632:136:77","680:120:55","922:104:25"],["392:1:24","464:136:19","480:1:27"],["376:128:56","424:168:76","568:128:101","680:168:75","888:128:57","936:168:65"],["376:144:102","440:152:0","608:160:35","688:152:54","904:0:17","1120:160:34","1200:152:0"],["392:1:24","464:136:20"],["368:136:39","456:168:37","648:136:41","744:168:88","880:168:46","896:168:45"],["352:48:52","392:174:38","648:0:17","864:48:50","904:48:51"],["136:1:24","216:168:21"],["360:136:104","424:168:39","616:152:97","680:168:39"],["16:16:31","104:152:10","172:140:57","200:140:58"],["72:168:3","312:48:53","488:128:104","648:1:24","720:168:22"],["304:48:52","368:174:43","568:144:47","624:174:46","904:0:24","984:144:21"],["64:164:2","368:48:47","488:142:55","488:126:28","624:136:94","736:174:46","904:8:24","1000:174:22"],["392:168:3","648:0:24","752:160:23"]];
+const WH=[0x8A4B,0x8AA4,0x8AF1,0x8B3C,0x8BBD,0x8BCC,0x8C06,0x8C75,0x8C84,0x8CD9,0x8D13,0x8D22,0x8D58,0x8D67];
+const OR=[[61,1,75,32,100,93],[17,77,55,25],[24,19,27],[56,76,101,75,57,65],[102,0,35,54,17,34],[24,20],[39,37,41,88,46,45],[52,38,17,50,51],[24,21],[104,39,97],[31,10,57,58],[3,53,104,24,22],[52,43,47,46,24,21],[2,47,55,28,94,46,24,22],[3,24,23]];
+let rom,S=[],orig=OR.map(x=>new Set(x)),end0=0x8442,OT=[],SC={};
+const o=a=>16+0x10000+a-0x8000,r=a=>rom[o(a)],rb=(b,a,base)=>rom[16+b*0x2000+a-base],P=(b,x)=>r(b+x)|r(b+15+x)<<8,h=n=>n.toString(16);
+function sName(t){
+ if(SP[lg][t])return SP[lg][t].replace(/^(Item|Arma|Weapon|Chefe Final|Final Boss|Chefe|Boss|Cena|Cutscene|Evento.*?|Stage Event|Event.*?|Gatilho.*?|Controlador.*?):\s*/,'').replace(/\s*\(.*?\)/,'');
+ if(t>=0x5a&&t<=0x5c)return'Simons';
+ return KN[r(0x85E8+4*t)]||h(t);
+}
+function buildOT(){
+ if(!rom)return;
+ OT=[];for(let t=0;t<105;t++){const hp=r(0x85E6+4*t),g=r(0x85E7+4*t),c=r(0x85E8+4*t);OT.push(`${h(t).padStart(2,0)} · ${enName(t,hp,g,c)} · grp ${g==255?'-':g}`)}
+ const cur=$('st').value||0;
+ $('st').innerHTML=S.map((_,i)=>`<option value=${i}>${TX[lg].sec} ${i} – ${SN[lg][i]}</option>`).join('');
+ $('st').value=cur;
+}
+function setLang(l){
+ lg=l;document.documentElement.lang=l=='pt'?'pt-BR':'en';
+ $('b_pt').innerHTML=l=='pt'?'<b>PT</b>':'PT';
+ $('b_en').innerHTML=l=='en'?'<b>ENG</b>':'ENG';
+ const T=TX[l];
+ ['t_h2','t_s2','t_sh','sv','ld','rs','t_wg','t_wp','t_wx','t_ws','t_wt','gen','t_wh','t_se','t_th','add','t_ot','t_lm','t_lt','t_fr','t_sq','t_sqh','t_go'].forEach(k=>$(k).textContent=T[k]);
+ $('t_rom').innerHTML=T.t_rom;
+ if(rom){buildOT();draw(1)}
+}
+$('b_pt').onclick=()=>setLang('pt');$('b_en').onclick=()=>setLang('en');
+function getSpr(t){
+ if(SC[t]!==undefined)return SC[t];
+ const id=r(0x8443+4*t),an=r(0x8444+4*t),c=r(0x85E8+4*t);
+ let be=rb(15,0xEB93+id,0xE000),fr=-1,cm=[0,0x1d,0x1e,0x1b],pal=[[0,0,0],[20,20,30],[255,255,255],[255,130,90]];
+ const C=[[80,170,255],[60,220,100],[255,110,190],[230,90,255],[255,95,120],[255,145,80]];
+ if(an==0xA2){fr=t>=0x63?(c==1?0xDD:0xDC):(c==1?0xDA:0xDB);cm=[0,0x1e,0x1e,0x1b];pal[3]=C[c]||pal[3]}
+ else if(t>=0x5a&&t<=0x5c){fr=0x28;cm=[0,0x1f,0x1f,0x1f];pal[3]=C[3]}
+ else if(!SP.pt[t]&&c<6){fr=[0x01,0x11,0x1B,0x28,0x34,0x4F][c];cm=[0,c==5?0x24:0x1d,c==3?0x1f:0x18,c==4?0x20:0x1b];pal[3]=C[c]}
+ else if(t==19||t==25){fr=0xA8;cm=[0,0,0x28,0]}
+ else if(t==20||t==22){fr=0xB9;cm=[0,0,0x2c,0x2f];pal[3]=[240,60,100]}
+ else if(t==21){fr=0x95;cm=[0,0x24,0x38,0]}
+ else if(t==23){fr=0x5B;cm=[0,0x38,0x38,0x38]}
+ else if(t==26){fr=0x4F;cm=[0,0x24,0x24,0]}
+ else if(t>=2&&t<=9||t==28){const p=rb(10,0x8000+(an&127),0x8000)|rb(10,0x8080+(an&127),0x8000)<<8;fr=rb(10,p+2,0x8000);cm=[0,0,0x23,0]}
+ else if(t>=10&&t<=12){fr=[0x32,0x97,0x66][t-10];const b=[1,5,9][t-10];cm=[b,b,b,b];pal[3]=[90,190,255]}
+ if(fr<0)return SC[t]='';
+ const mp=rb(be,0x8100+fr,0x8000)|rb(be,0x8200+fr,0x8000)<<8,b0=rb(be,mp,0x8000),bo=b0&128?3:11,cnt=(b0&127)+1;
+ const pi=rb(be,mp+1,0x8000),pp=(rb(bo,0xB100+pi,0xA000)|rb(bo,0xB200+pi,0xA000)<<8)-2;
+ const cv=document.createElement('canvas');cv.width=64;cv.height=64;
+ const ctx=cv.getContext('2d'),im=ctx.createImageData(64,64),d=im.data,cb=16+16*0x2000;
+ for(let k=cnt-1;k>=0;k--){
+  const tl=rb(be,mp+2+2*k,0x8000),at=rb(be,mp+3+2*k,0x8000);
+  let dy=rb(bo,pp+2+2*k,0xA000),dx=rb(bo,pp+3+2*k,0xA000);if(dy>127)dy-=256;if(dx>127)dx-=256;
+  const hf=at&64,vf=at&128,bk=cm[tl>>6],ti=tl&63;
+  for(let py=0;py<8;py++)for(let px=0;px<8;px++){
+   const off=cb+bk*1024+ti*16+(vf?7-py:py),bit=7-(hf?7-px:px),v=(rom[off]>>bit&1)|((rom[off+8]>>bit&1)<<1);
+   if(!v)continue;
+   const x=32+dx+px,y=48+dy+py;if(x<0||x>=64||y<0||y>=64)continue;
+   const j=(y*64+x)*4,rgb=pal[v];d[j]=rgb[0];d[j+1]=rgb[1];d[j+2]=rgb[2];d[j+3]=255}}
+ ctx.putImageData(im,0,0);return SC[t]=cv.toDataURL();
+}
+$('f').onchange=async e=>{rom=new Uint8Array(await e.target.files[0].arrayBuffer());SC={};load()};
+function getState(){return{v:2,S,lim:+$('lim').value,lt:$('lt').checked,fr:$('fr').checked,seq:$('seq').value,pat:$('pat').value,x0:$('x0').value,sp:$('sp').value,ty:$('ty').value}}
+function setState(p){
+ if(!p||!Array.isArray(p.S)||p.S.length!=15)return msg(TX[lg].m_lde);
+ S=p.S.map(L=>L.map(e=>({x:+e.x,y:+e.y,z:+e.z||0,t:+e.t})));
+ if(p.lim!=null)$('lim').value=p.lim;if(p.lt!=null)$('lt').checked=!!p.lt;
+ if(p.fr!=null)$('fr').checked=!!p.fr;
+ if(p.seq!=null)$('seq').value=p.seq;if(p.pat!=null)$('pat').value=p.pat;
+ if(p.x0!=null)$('x0').value=p.x0;if(p.sp!=null)$('sp').value=p.sp;if(p.ty!=null)$('ty').value=p.ty;
+ draw()}
+function saveAuto(){try{if(rom)localStorage.setItem('mff_auto',JSON.stringify(getState()))}catch(e){}}
+function load(){
+ $('app').hidden=true;
+ if(rom.length!=262160||rom[0]!=78||r(0x96F2)!=0xC9)return msg(TX[lg].m_bad);
+ S=[];end0=0x8442;
+ const edited=P(PT[0],0)!=0x8294||r(0x8085)==0x21||r(0x8A3D)==0x44||r(0x9025)==0x18||rb(15,0xE67A,0xE000)==0x20||r(0x96F3)!=2;
+ for(let s=0;s<15;s++){const a=PT.map(b=>P(b,s)),L=[];
+  for(let i=0;r(a[0]+i)!=255&&i<60;i++)L.push({x:r(a[0]+i)<<8|r(a[1]+i),z:r(a[2]+i),y:r(a[3]+i),t:r(a[4]+i)});
+  S.push(L)}
+ if(edited){
+  $('lim').value=r(0x96F3);$('lt').checked=r(0x8085)==0x21;$('fr').checked=r(0x9025)==0x18;
+  if(rb(15,0xE67A,0xE000)==0x20){const n=(rb(1,0xAE68,0xA000)&31)+1;$('seq').value=Array.from({length:n},(_,i)=>rb(1,0xBAA4+i,0xA000)).join(',')}
+  else $('seq').value='0,1,2,3';
+ }else{$('lim').value=4;$('lt').checked=$('fr').checked=true;$('seq').value='0,1,2,3'}
+ buildOT();
+ try{$('rs').hidden=!localStorage.getItem('mff_auto')}catch(e){}
+ $('app').hidden=false;msg(edited?TX[lg].m_ed:TX[lg].m_ok);draw(1)}
+const opts=(s,t)=>OT.map((x,i)=>`<option value=${i} ${i==t?'selected':''}>${orig[s].has(i)?'★ ':''}${x}`).join('');
+function draw(skipAuto){
+ const s=+$('st').value,L=S[s].sort((a,b)=>a.x-b.x),T=TX[lg];
+ $('tb').innerHTML=L.map((e,i)=>`<tr><td>${i+1}<td><input class=n data-i=${i} data-k=x value=${h(e.x)}><td><input class=n data-i=${i} data-k=y value=${h(e.y)}><td><select data-i=${i} data-k=t>${opts(s,e.t)}</select><td><button data-d=${i}>✕</button>`).join('');
+ const sq=$('seq').value.split(',').map(x=>x.trim()).filter(x=>x!=='');
+ const maxX=L.reduce((m,e)=>Math.max(m,e.x),0),nSc=Math.max(s==0?sq.length:QA[s][1],(maxX>>8)+1,1);
+ const mp=$('mp');mp.style.width=(nSc*256)+'px';
+ let mh=`<div class=zl style="top:48px">${T.top}</div><div class=zl style="top:130px">${T.str}</div>`;
+ for(let k=0;k<nSc;k++){
+  const mId=s==0?(sq[k]!==undefined?` · ${T.map} ${sq[k]}`:` · ${T.out}`):'';
+  mh+=`<div class=sc style="left:${k*256}px;width:250px">${T.scr} ${k}${mId} (${h(k*256).padStart(3,0)}–${h(k*256+255).padStart(3,0)})</div>`}
+ L.forEach((e,i)=>{const sp=getSpr(e.t);mh+=`<div class=en data-i=${i} style="left:${e.x}px;top:${e.y}px" title="${T.drag}">${sp?`<img src="${sp}" width=64 height=64>`:''}<span>#${i+1} ${sName(e.t)} (${h(e.x)},${h(e.y)})</span></div>`});
+ mp.innerHTML=mh;
+ const used=75+5*S.reduce((a,l)=>a+l.length,0),cap=(end0-0x8294)+66+200;
+ $('cap').textContent=`${T.cap}: ${used}/${cap} bytes`+(used>cap?T.over:'');
+ if(!skipAuto)saveAuto()}
+$('st').onchange=()=>draw(1);
+$('seq').oninput=()=>{if(+$('st').value!=0)$('st').value=0;draw();const m=$('mw');m.scrollLeft=m.scrollWidth};
+$('lim').onchange=$('lt').onchange=$('fr').onchange=saveAuto;
+$('sv').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(getState(),null,2)],{type:'application/json'}));a.download='mff_alteracoes.json';a.click();msg(TX[lg].m_sv)};
+$('ld').onclick=()=>$('pf').click();
+$('pf').onchange=async e=>{if(!e.target.files[0])return;try{setState(JSON.parse(await e.target.files[0].text()));msg(TX[lg].m_ld)}catch(err){msg(TX[lg].m_lde)}e.target.value=''};
+$('rs').onclick=()=>{try{const p=JSON.parse(localStorage.getItem('mff_auto'));if(p){setState(p);msg(TX[lg].m_rs)}}catch(e){}};
+let dr=null;
+$('mp').onpointerdown=e=>{
+ const el=e.target.closest('.en');if(!el)return;
+ e.preventDefault();el.setPointerCapture(e.pointerId);
+ const i=+el.dataset.i,L=S[+$('st').value];
+ dr={el,i,e:L[i],sx:e.clientX,sy:e.clientY,ox:L[i].x,oy:L[i].y}};
+$('mp').onpointermove=e=>{
+ if(!dr)return;
+ const nx=Math.max(0,Math.min(0xFEFF,Math.round(dr.ox+(e.clientX-dr.sx)))),ny=Math.max(0,Math.min(240,Math.round(dr.oy+(e.clientY-dr.sy))));
+ dr.e.x=nx;dr.e.y=ny;dr.el.style.left=nx+'px';dr.el.style.top=ny+'px';
+ dr.el.querySelector('span').textContent=`#${dr.i+1} ${sName(dr.e.t)} (${h(nx)},${h(ny)})`;
+ const rx=$('tb').querySelector(`input[data-i="${dr.i}"][data-k="x"]`),ry=$('tb').querySelector(`input[data-i="${dr.i}"][data-k="y"]`);
+ if(rx)rx.value=h(nx);if(ry)ry.value=h(ny)};
+$('mp').onpointerup=$('mp').onpointercancel=()=>{if(dr){dr=null;draw()}};
+$('tb').onchange=e=>{const t=e.target,i=+t.dataset.i,L=S[+$('st').value];
+ if(t.dataset.k){const v=t.dataset.k=='t'?+t.value:parseInt(t.value,16);if(isNaN(v))return;L[i][t.dataset.k]=v;draw()}};
+$('tb').onclick=e=>{if(e.target.dataset.d!=null){S[+$('st').value].splice(+e.target.dataset.d,1);draw()}};
+$('add').onclick=()=>{const L=S[+$('st').value],l=L[L.length-1]||{x:0x148,y:0x90,t:0x3d,z:0};L.push({x:l.x+0x40,y:0x90,t:l.t,z:0});draw()};
+$('gen').onclick=()=>{const pat=$('pat').value.split(',').map(Number),x0=parseInt($('x0').value,16),sp=parseInt($('sp').value,16),
+ ty=$('ty').value.split(',').map(v=>parseInt(v,16)),L=[];let k=0;
+ if(pat.some(isNaN)||isNaN(x0)||isNaN(sp)||ty.some(isNaN))return msg(TX[lg].m_gen);
+ pat.forEach((n,w)=>{for(let i=0;i<n;i++,k++)L.push({x:x0+w*sp+i*6,y:0x82+(i*0x16+w*0x0B)%0x2D,t:ty[k%ty.length],z:0})});
+ S[+$('st').value]=L;draw()};
+$('go').onclick=()=>{
+ const d=rom.slice(),w=(a,v)=>d[o(a)]=v,o1=a=>16+0x2000+a-0xA000,o15=a=>16+15*0x2000+a-0xE000,T=TX[lg];
+ const R=[[0x8294,end0],[0xA073,0xA073+66],[0xBA18,0xBAE0]];
+ R.forEach(([a,e])=>{for(;a<e;a++)w(a,0)});
+ const pos=R.map(x=>x[0]),en=R.map(x=>x[1]),C=[e=>e.x>>8,e=>e.x&255,e=>e.z,e=>e.y,e=>e.t];
+ for(let s=0;s<15;s++){const L=S[s].slice().sort((a,b)=>a.x-b.x);
+  if(L.some(e=>e.x>=0xFF00||e.y>255))return msg(T.m_lim+s);
+  for(let c=0;c<5;c++){const n=L.length+1,j=pos.findIndex((p,k)=>p+n<=en[k]);
+   if(j<0)return msg(T.m_spc);
+   const a=pos[j];L.forEach((e,i)=>w(a+i,C[c](e)));w(a+L.length,255);pos[j]+=n;w(PT[c]+s,a&255);w(PT[c]+15+s,a>>8)}}
+ if(r(0x96F2)==0xC9)w(0x96F3,+$('lim').value||2);
+ if($('lt').checked){
+  w(0x8085,0x21);w(0x8AE4,0xEA);
+  [0x20,0xF2,0xA0,0x30,0x02].forEach((v,i)=>w(0x80AE+i,v));
+  [0xB1,0x7A,0x38,0xE9,0x02,0xC9,0x1E,0x90,0x06,0x20,0xC3,0x96,0xF0,0x01,0x60,0x4C,0xF9,0x8A].forEach((v,i)=>w(0xA0F2+i,v));
+  [0xA4,0x9E,0x20,0xC2,0x80,0x20,0xE4,0x80,0xE6,0x9E,0xA9,0x01,0x60].forEach((v,i)=>w(0x8AF9+i,v))}
+ else{
+  w(0x8085,0x20);w(0x8AE4,0xF9);
+  [0x20,0xE4,0x80,0xE6,0x9E].forEach((v,i)=>w(0x80AE+i,v));
+  for(let i=0;i<18;i++)w(0xA0F2+i,0);
+  [165,84,217,206,141,144,4,32,210,137,96,32,0].forEach((v,i)=>w(0x8AF9+i,v))}
+ QA.forEach(([qa,ql],s)=>{
+  const ed=S[s].map(e=>`${e.x}:${e.y}:${e.t}`).join()!=OS[s].join()||(s==0&&$('seq').value.trim()!='0,1,2,3');
+  for(let k=0;k<ql;k++)w(qa+k,s!=10&&OQ[s][k]>1&&ed?0:OQ[s][k])});
+ w(0x8A3D,0x44);
+ [0x20,0xFC,0x96,0xD0,0x03,0x4C,0xD2,0x89,0x60].forEach((v,i)=>w(0x8A53+i,v));
+ WH.forEach(a=>{w(a,0x20);w(a+1,0x53);w(a+2,0x8A)});
+ if($('fr').checked)for(let i=0;i<15;i++)w(0x9025+i,0x18);
+ else[60,90,120,150,60,30,60,180,120,60,30,105,120,150,30].forEach((v,i)=>w(0x9025+i,v));
+ const seq=$('seq').value.split(',').map(x=>x.trim()).filter(x=>x!=='').map(Number);
+ if(seq.some(v=>!(v>=0&&v<=3))||seq.length<1||seq.length>16)return msg(T.m_seq);
+ if(seq.join()!='0,1,2,3'){
+  seq.forEach((v,i)=>d[o1(0xBAA4+i)]=v);
+  d[o1(0xAE68)]=(d[o1(0xAE68)]&0xE0)|(seq.length-1);
+  [0x20,0x7C,0xFD].forEach((v,i)=>d[o15(0xE67A+i)]=v);
+  [0xA5,0x22,0xD0,0x04,0xB9,0xA4,0xBA,0x60,0xB9,0x60,0xAE,0x60].forEach((v,i)=>d[o15(0xFD7C+i)]=v);
+  [0xA4,0xF9,0xF0,0x13,0xA5,0xF9,0xC5,0x2C,0xD0,0x04,0xA0,0x03,0xD0,0x09,0x38,0xE9,0x01,0x29,0x01,0x18,0x69,0x01,0xA8,0xB9,0x3B,0x8A,0x60].forEach((v,i)=>w(0xBAE0+i,v));
+  [0x20,0xE0,0xBA,0xEA,0xEA].forEach((v,i)=>w(0x8A2C+i,v))}
+ else{
+  for(let i=0;i<16;i++)d[o1(0xBAA4+i)]=0;
+  d[o1(0xAE68)]=35;
+  [185,96,174].forEach((v,i)=>d[o15(0xE67A+i)]=v);
+  for(let i=0;i<12;i++)d[o15(0xFD7C+i)]=0;
+  for(let i=0;i<27;i++)w(0xBAE0+i,0);
+  [164,249,185,59,138].forEach((v,i)=>w(0x8A2C+i,v))}
+ saveAuto();
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([d]));a.download='MFF_editada.nes';a.click();msg(T.m_rom)};
+</script></html>
